@@ -24,8 +24,10 @@ class Provider extends AbstractProvider implements ProviderInterface
     /**
      * {@inheritdoc}
      */
+    const API_VERSION = '5.74';
+
     protected $parameters = [
-         'v' => '5.69',
+        'v' => self::API_VERSION,
     ];
 
     /**
@@ -51,12 +53,23 @@ class Provider extends AbstractProvider implements ProviderInterface
      */
     protected function getUserByToken($token)
     {
-        $lang = $this->getConfig('lang');
-        $lang = $lang ? '&language='.$lang : '';
-        $response = $this->getHttpClient()->get(
-            'https://api.vk.com/method/users.get?access_token='.$token.'&fields='.implode(',', $this->fields).$lang.'&v=3.0'
-        );
+        $from_token = [];
 
+        if(is_array($token)) {
+            $from_token["email"] = $token["email"];
+            $token = $token["access_token"];
+        }
+
+        $lang = $this->getConfig('lang');
+
+        $response = $this->getHttpClient()->get(
+            'https://api.vk.com/method/users.get?'.http_build_query([
+                'access_token' => $token,
+                'fields' => implode(',', $this->fields),
+                'lang' => $lang ?: 'ru',
+                'v' => self::API_VERSION,
+            ])
+        );
         $contents = $response->getBody()->getContents();
         $response = json_decode($contents, true);
         if (!is_array($response) || !isset($response['response'][0])) {
@@ -66,7 +79,9 @@ class Provider extends AbstractProvider implements ProviderInterface
             ));
         }
 
-        return $response['response'][0];
+        $result = $response["response"][0];
+
+        return array_merge($result, $from_token);
     }
 
     /**
@@ -75,12 +90,28 @@ class Provider extends AbstractProvider implements ProviderInterface
     protected function mapUserToObject(array $user)
     {
         return (new User())->setRaw($user)->map([
-            'id'       => Arr::get($user, 'uid'),
+            'id'       => Arr::get($user, 'id'),
             'nickname' => Arr::get($user, 'screen_name'),
             'name'     => trim(Arr::get($user, 'first_name').' '.Arr::get($user, 'last_name')),
             'email'    => Arr::get($user, 'email'),
             'avatar'   => Arr::get($user, 'photo'),
         ]);
+    }
+
+    protected function parseAccessToken($body) {
+        return json_decode($body, true);
+    }
+
+    public function user() {
+        if ($this->hasInvalidState()) {
+            throw new \RuntimeException();
+        }
+
+        $user = $this->mapUserToObject($this->getUserByToken(
+            $token = $this->getAccessTokenResponse($this->getCode())
+        ));
+
+        return $user->setToken(array_get($token, 'access_token'));
     }
 
     /**
