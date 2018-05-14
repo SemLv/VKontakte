@@ -56,8 +56,8 @@ class Provider extends AbstractProvider implements ProviderInterface
         $from_token = [];
 
         if(is_array($token)) {
-            $from_token["email"] = $token["email"];
-            $token = $token["access_token"];
+            $from_token["email"] = $token["email"] ?? null;
+            $token = $token["access_token"] ?? null;
         }
 
         $lang = $this->getConfig('lang');
